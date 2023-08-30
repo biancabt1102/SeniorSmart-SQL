@@ -13,33 +13,40 @@ SET VERIFY OFF;
 
 -- Função
 
--- Calcula o desconto do plano anual
--- CODIGO FUNCIONANDO 
--- TESTAR EXCEPTION
+-- 1. Calcula o desconto do plano anual
 
 CREATE OR REPLACE FUNCTION FUNC_CALCULAR_DESCONTO_PLANO(V_CD_PLANO IN NUMBER, PERCENTUAL_DESCONTO IN NUMBER)
 RETURN NUMBER 
 IS
     VALOR_COM_DESCONTO NUMBER(10,2);
     V_VALOR_PLANO NUMBER(10,2);
-    ERR_CODE NUMBER(4);
+    ERR_CODE NUMBER(5);
     ERR_MSG VARCHAR2(100);
     V_DATE_ERR DATE := SYSDATE;
+    
+    NULL_EXCEPTION EXCEPTION;
+    PRAGMA EXCEPTION_INIT(NULL_EXCEPTION, -20001);
 BEGIN
-    SELECT VL_PLANO_ANUAL INTO V_VALOR_PLANO FROM t_ss_plano
+    SELECT VL_PLANO_ANUAL INTO V_VALOR_PLANO FROM T_SS_PLANO
     WHERE CD_PLANO = V_CD_PLANO;
+    
+    IF V_VALOR_PLANO IS NULL THEN
+        ERR_CODE := -20001;
+        RAISE NULL_EXCEPTION;
+    END IF;
     
     VALOR_COM_DESCONTO := V_VALOR_PLANO * (1 - (PERCENTUAL_DESCONTO / 100));
     RETURN VALOR_COM_DESCONTO;
+    
 EXCEPTION 
-    WHEN NO_DATA_FOUND THEN
-        ERR_CODE := SQLCODE;
-        ERR_MSG := SUBSTR(SQLERRM, 1, 100);
+    WHEN NULL_EXCEPTION THEN
+        ERR_MSG := 'O valor do plano anual está nulo';
         
         INSERT INTO T_SS_ERRO(CD_ERRO, NM_ERRO, DT_OCORRENCIA, USUARIO)
         VALUES(ERR_CODE, ERR_MSG, V_DATE_ERR, USER);
         COMMIT;
         RETURN NULL;
+        
     WHEN OTHERS THEN
         ERR_CODE := SQLCODE;
         ERR_MSG := SUBSTR(SQLERRM, 1, 100);
@@ -50,19 +57,21 @@ EXCEPTION
         RETURN NULL;
 END;
 
---SELECT FUNC_CALCULAR_DESCONTO_PLANO(6, 10) FROM DUAL;
---DBMS_OUTPUT.PUT_LINE(FUNC_CALCULAR_DESCONTO_PLANO(6, 10));
+-- BLOCO ANONIMO PARA AS EXCEPTIONS
+DECLARE
+    V_CD_PLANO NUMBER(2) := &CODIGO_DO_PLANO;
+    V_PERCENTUAL_DE_DESCONTO NUMBER(2) := &PERCENTUAL_DE_DESCONTO;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE(FUNC_CALCULAR_DESCONTO_PLANO(V_CD_PLANO, V_PERCENTUAL_DE_DESCONTO));
+END;
 
-
--- Calcula a idade do usuário
--- Código funcionando
--- TESTAR EXCEPTION
+-- 2. Calcula a idade do usuário
 
 CREATE OR REPLACE FUNCTION FUNC_CALCULA_IDADE(V_CD_USUARIO IN NUMBER)
 RETURN NUMBER
 IS
     IDADE NUMBER(3);
-    ERR_CODE NUMBER(4);
+    ERR_CODE NUMBER(5);
     ERR_MSG VARCHAR2(100);
     V_DATE_ERR DATE := SYSDATE;
 BEGIN
@@ -92,21 +101,26 @@ EXCEPTION
 
 END;
 
-SELECT FUNC_CALCULA_IDADE(1) FROM DUAL;
+-- BLOCO ANONIMO PARA AS EXCEPTIONS
+DECLARE
+    V_CD_USUAIO NUMBER(2) := &CODIGO_DO_USUARIO;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE(FUNC_CALCULA_IDADE(V_CD_USUAIO));
+END;
 
 -- Procedure
 
--- Gerar relatório de usuários por plano
--- Criar mais uma exception
--- Código funcionando
--- Testar exception
+-- 1. Gerar relatório de usuários por plano
 
 CREATE OR REPLACE PROCEDURE relatorio_usuarios_por_plano
 IS
-    ERR_CODE NUMBER(4);
+    ERR_CODE NUMBER(5);
     ERR_MSG VARCHAR2(100);
     V_DATE_ERR DATE := SYSDATE;
     V_ID_USUARIO NUMBER(2);
+    
+    IDADE_EXCEPTION EXCEPTION;
+    PRAGMA EXCEPTION_INIT(IDADE_EXCEPTION, -20002);
     
 CURSOR c_relatorio IS 
     SELECT p.DS_PLANO, u.NM_USUARIO, u.DT_NASCIMENTO, u.CD_USUARIO FROM T_SS_PLANO p
@@ -116,10 +130,22 @@ CURSOR c_relatorio IS
 BEGIN 
     FOR rec IN c_relatorio LOOP
         V_ID_USUARIO := rec.CD_USUARIO;
-        DBMS_OUTPUT.PUT_LINE('Plano: ' || rec.DS_PLANO || ', Usuário' || rec.NM_USUARIO || ', Idade: '|| FUNC_CALCULA_IDADE(V_ID_USUARIO));
+        
+        IF FUNC_CALCULA_IDADE(V_ID_USUARIO) >= 18 THEN
+            DBMS_OUTPUT.PUT_LINE('Plano: ' || rec.DS_PLANO || ', Usuário: ' || rec.NM_USUARIO || ', Idade: '|| FUNC_CALCULA_IDADE(V_ID_USUARIO));
+        ELSE
+            ERR_CODE := -20002;
+            RAISE IDADE_EXCEPTION;
+        END IF;
     END LOOP;
 
 EXCEPTION
+    WHEN IDADE_EXCEPTION THEN
+        ERR_MSG := 'Idade inválida para o usuário';
+        
+        INSERT INTO T_SS_ERRO(CD_ERRO, NM_ERRO, DT_OCORRENCIA, USUARIO)
+        VALUES(ERR_CODE, ERR_MSG, V_DATE_ERR, USER);
+        COMMIT;
     WHEN OTHERS THEN
         ERR_CODE := SQLCODE;
         ERR_MSG := SUBSTR(SQLERRM, 1, 100);
@@ -129,24 +155,41 @@ EXCEPTION
         COMMIT;
 END relatorio_usuarios_por_plano;
 
-EXEC relatorio_usuarios_por_plano;
+-- BLOCO ANONIMO PARA AS EXCEPTIONS
+BEGIN
+    relatorio_usuarios_por_plano;
+END;
 
--- Gerar relatório de pagamentos mensais
--- Criar mais uma exception
--- Código rodando
--- Testar EXCEPTION
+-- 2. Gerar relatório de pagamentos mensais
 
 CREATE OR REPLACE PROCEDURE relatorio_pagamentos_mensais 
 IS
-    ERR_CODE NUMBER(4);
+    ERR_CODE NUMBER(5);
     ERR_MSG VARCHAR2(100);
     V_DATE_ERR DATE := SYSDATE;
+    PLANO_EXCEPTION EXCEPTION;
+    PRAGMA EXCEPTION_INIT(PLANO_EXCEPTION, -20003);
+    
 CURSOR c_relatorio IS
     SELECT u.NM_USUARIO, p.VL_PLANO_MENSAL FROM T_SS_USUARIO u
     JOIN T_SS_PLANO p ON u.CD_PLANO = p.CD_PLANO;
 BEGIN
     FOR rec IN c_relatorio LOOP
-        DBMS_OUTPUT.PUT_LINE('Usuário: ' || rec.NM_USUARIO || ', Pagamento mensal: R$' || rec.VL_PLANO_MENSAL);
+        BEGIN
+            IF rec.VL_PLANO_MENSAL IS NULL THEN
+                ERR_CODE := -20003;
+                RAISE PLANO_EXCEPTION;
+            END IF;
+        
+            DBMS_OUTPUT.PUT_LINE('Usuário: ' || rec.NM_USUARIO || ', Pagamento mensal: R$' || rec.VL_PLANO_MENSAL);
+        EXCEPTION
+            WHEN PLANO_EXCEPTION THEN
+                ERR_MSG := 'O plano mensal está nulo';
+                
+                INSERT INTO T_SS_ERRO(CD_ERRO, NM_ERRO, DT_OCORRENCIA, USUARIO)
+                VALUES(ERR_CODE, ERR_MSG, V_DATE_ERR, USER);
+                COMMIT;
+        END;
     END LOOP;
 EXCEPTION
     WHEN OTHERS THEN
@@ -157,18 +200,20 @@ EXCEPTION
         COMMIT;
 END relatorio_pagamentos_mensais;
 
-EXEC relatorio_pagamentos_mensais;
+-- BLOCO ANONIMO PARA AS EXCEPTIONS
+BEGIN
+    relatorio_pagamentos_mensais;
+END;
 
 -- Trigger
 
 -- Monitorar atualização de valores
--- Trigger funcionando
 
 CREATE OR REPLACE TRIGGER trg_monitorar_atualizacao
 AFTER UPDATE ON T_SS_USUARIO 
 FOR EACH ROW
 DECLARE
-    ERR_CODE NUMBER(4);
+    ERR_CODE NUMBER(5);
     ERR_MSG VARCHAR2(100);
     V_DATE_ERR DATE := SYSDATE;
 BEGIN 
@@ -183,5 +228,9 @@ EXCEPTION
         VALUES(ERR_CODE, ERR_MSG, V_DATE_ERR, USER);
 END;
 
---UPDATE T_SS_USUARIO SET NR_TELEFONE='069922612250' WHERE CD_USUARIO = 1;
+-- BLOCO ANONIMO PARA TESTAR A TRIGGER
+BEGIN
+    UPDATE T_SS_USUARIO SET NR_TELEFONE='069922612250' WHERE CD_USUARIO = 1;
+    COMMIT;
+END;
 
