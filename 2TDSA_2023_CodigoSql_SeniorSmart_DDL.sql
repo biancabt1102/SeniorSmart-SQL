@@ -20,6 +20,7 @@ Drop table T_SS_RESPOSTA cascade constraints;
 Drop table T_SS_PERGUNTAS_USUARIO cascade constraints;
 Drop table T_SS_ERRO cascade constraints;
 Drop table T_SS_LOG_ATUALIZACAO cascade constraints;
+Drop table T_SS_LOG_INSERT cascade constraints;
 */
 
 -- Create table
@@ -107,6 +108,10 @@ CREATE TABLE T_SS_LOG_ATUALIZACAO(
     VALOR_NOVO VARCHAR2(12)
 );
 
+CREATE TABLE T_SS_LOG_INSERT(
+    DT_INSERT DATE,
+    CD_CARTAO NUMBER(2)
+);
 
 -- FK
 
